@@ -17,6 +17,7 @@ import logging
 import requests
 import gevent.pool
 import geoip2.database
+from geoip2.errors import GeoIP2Error
 
 from .utils import signal_name, load_object
 
@@ -36,7 +37,7 @@ class GetProxy(object):
         self.input_proxies = []
         self.input_proxies_file = input_proxies_file
         self.output_proxies_file = output_proxies_file
-        self.proxies_hash = {}
+        self.proxies_hash = set()
         self.origin_ip = None
         self.geoip_reader = None
 
@@ -56,7 +57,7 @@ class GetProxy(object):
         if proxy_hash in self.proxies_hash:
             return
 
-        self.proxies_hash[proxy_hash] = True
+        self.proxies_hash.add(proxy_hash)
         request_proxies = {
             scheme: "%s:%s" % (host, port)
         }
@@ -77,14 +78,18 @@ class GetProxy(object):
             return
 
         anonymity = self._check_proxy_anonymity(response_json)
-        country = country or self.geoip_reader.country(host).country.iso_code
-        export_address = self._check_export_address(response_json)
+        try:
+            country = country or self.geoip_reader.country(host).country.iso_code
+        except GeoIP2Error:
+            country = None
+        origin_address = self._check_origin_address(response_json)
 
         return {
+            "hash": proxy_hash,
             "type": scheme,
             "host": host,
-            "export_address": export_address,
             "port": port,
+            "origin": origin_address,
             "anonymity": anonymity,
             "country": country,
             "response_time": round(request_end - request_begin, 2),
@@ -117,7 +122,7 @@ class GetProxy(object):
         else:
             return 'high_anonymous'
 
-    def _check_export_address(self, response):
+    def _check_origin_address(self, response):
         origin = response.get('origin', '').split(', ')
         if self.origin_ip in origin:
             origin.remove(self.origin_ip)
@@ -138,6 +143,7 @@ class GetProxy(object):
         logger.warning("[-] Press Ctrl+C again for a cold shutdown.")
 
     def init(self):
+        # 1. 初始化，必须步骤
         logger.info("[*] Init")
         signal.signal(signal.SIGINT, self._request_stop)
         signal.signal(signal.SIGTERM, self._request_stop)
@@ -149,23 +155,24 @@ class GetProxy(object):
         self.geoip_reader = geoip2.database.Reader(os.path.join(self.base_dir, 'data/GeoLite2-Country.mmdb'))
 
     def load_input_proxies(self):
+        # 2. 加载 input proxies 列表
         logger.info("[*] Load input proxies")
 
         if self.input_proxies_file and os.path.exists(self.input_proxies_file):
             with open(self.input_proxies_file) as fd:
                 for line in fd:
-                    try:
-                        self.input_proxies.append(json.loads(line))
-                    except:
-                        continue
+                    self.input_proxies.append(json.loads(line))
 
     def validate_input_proxies(self):
+        # 3. 验证 input proxies 列表
         logger.info("[*] Validate input proxies")
-        self.valid_proxies = self._validate_proxy_list(self.input_proxies)
+        valid_proxies = self._validate_proxy_list(self.input_proxies)
+        self.valid_proxies.extend(valid_proxies)
         logger.info("[*] Check %s input proxies, Got %s valid input proxies" %
                     (len(self.proxies_hash), len(self.valid_proxies)))
 
     def load_plugins(self):
+        # 4. 加载 plugin
         logger.info("[*] Load plugins")
         for plugin_name in os.listdir(os.path.join(self.base_dir, 'plugin')):
             if os.path.splitext(plugin_name)[1] != '.py' or plugin_name == '__init__.py':
@@ -182,6 +189,7 @@ class GetProxy(object):
             self.plugins.append(inst)
 
     def grab_web_proxies(self):
+        # 5. 抓取 web proxies 列表
         logger.info("[*] Grab proxies")
 
         for plugin in self.plugins:
@@ -193,6 +201,7 @@ class GetProxy(object):
         self._collect_result()
 
     def validate_web_proxies(self):
+        # 6. 验证 web proxies 列表
         logger.info("[*] Validate web proxies")
         input_proxies_len = len(self.proxies_hash)
 
@@ -207,6 +216,7 @@ class GetProxy(object):
                     (len(self.proxies_hash), len(self.valid_proxies)))
 
     def save_proxies(self):
+        # 7. 保存当前所有已验证的 proxies 列表
         if self.output_proxies_file:
             outfile = open(self.output_proxies_file, 'w')
         else:

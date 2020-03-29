@@ -13,17 +13,7 @@ logger = logging.getLogger(__name__)
 
 class Proxy(object):
     def __init__(self):
-        self.txt_list = [
-            'http://pubproxy.com/api/proxy?limit=5&format=txt&type=http',
-            # 'http://api.xicidaili.com/free2016.txt',
-            'http://static.fatezero.org/tmp/proxy.txt',
-            # 'http://comp0.ru/downloads/proxylist.txt',
-            'http://www.proxylists.net/http_highanon.txt',
-            'http://www.proxylists.net/http.txt',
-            'http://ab57.ru/downloads/proxylist.txt',
-            # 'https://www.rmccurdy.com/scripts/proxy/good.txt'
-            'http://pubproxy.com/api/proxy?limit=5&format=txt&type=https',
-        ]
+        self.url = "http://www.cool-proxy.net/proxies.json"
         self.user_agent = UserAgent()
 
         self.proxies = []
@@ -54,13 +44,12 @@ class Proxy(object):
             logger.error("[-] Request url {url} error: {error}".format(url=url, error=str(e)))
             return []
 
-        proxies_list = resp.text.splitlines()
-        return [{'host': proxy.split(":")[0], 'port': int(proxy.split(":")[1]), 'from': 'txt'} for proxy in proxies_list]
+        proxies_list = resp.json()
+        return [{"host": proxy.get("ip"), "port": proxy.get("port"), "from": "cool"} for proxy in proxies_list]
 
     def start(self):
-        for url in self.txt_list:
-            proxies_list = self.extract_proxy(url)
-            self.result.extend(proxies_list)
+        proxies_list = self.extract_proxy(self.url)
+        self.result.extend(proxies_list)
 
 
 if __name__ == '__main__':
