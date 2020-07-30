@@ -18,9 +18,9 @@ import requests
 import gevent.pool
 import geoip2.database
 from geoip2.errors import GeoIP2Error
+from redis import Redis
 
 from .utils import signal_name, load_object
-
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +40,8 @@ class GetProxy(object):
         self.proxies_hash = set()
         self.origin_ip = None
         self.geoip_reader = None
+        self.client = Redis()
+        self.set_key = 'set:proxies'
 
     def _collect_result(self):
         for plugin in self.plugins:
@@ -69,7 +71,7 @@ class GetProxy(object):
                 proxies=request_proxies,
                 timeout=5
             ).json()
-        except:
+        except Exception as e:
             return
 
         request_end = time.time()
@@ -217,6 +219,10 @@ class GetProxy(object):
 
     def save_proxies(self):
         # 7. 保存当前所有已验证的 proxies 列表
+        if not self.valid_proxies:
+            return
+
+        logger.info("[*] Save valid proxies to file")
         if self.output_proxies_file:
             outfile = open(self.output_proxies_file, 'w')
         else:
@@ -230,6 +236,15 @@ class GetProxy(object):
         if outfile != sys.stdout:
             outfile.close()
 
+    def save_proxies_to_redis(self):
+        if not self.valid_proxies:
+            return
+
+        logger.info("[*] Save valid proxies to redis")
+        self.client.delete(self.set_key)
+        for item in self.valid_proxies:
+            self.client.sadd(self.set_key, item.get('hash'))
+
     def start(self):
         self.init()
         self.load_input_proxies()
@@ -238,6 +253,7 @@ class GetProxy(object):
         self.grab_web_proxies()
         self.validate_web_proxies()
         self.save_proxies()
+        self.save_proxies_to_redis()
 
 
 if __name__ == '__main__':

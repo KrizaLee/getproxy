@@ -37,8 +37,6 @@ class Proxy(object):
         if self.proxies:
             proxy = self.proxies.pop(0)
             return {proxy['type']: "%s:%s" % (proxy['host'], proxy['port'])}
-        else:
-            return None
 
     @retrying.retry(stop_max_attempt_number=5)
     def parse_url(self, url):
