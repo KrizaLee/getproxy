@@ -3,22 +3,18 @@
 
 from __future__ import unicode_literals, absolute_import, division, print_function
 
-import gevent.monkey
-gevent.monkey.patch_all()
+from gevent import pool, monkey; monkey.patch_all()
 
-import os
-import sys
 import json
-import time
-import copy
-import signal
 import logging
+import os
+import signal
+import time
 
+import redis
 import requests
-import gevent.pool
 import geoip2.database
 from geoip2.errors import GeoIP2Error
-from redis import Redis
 
 from .utils import signal_name, load_object
 
@@ -28,27 +24,20 @@ logging.basicConfig(level=logging.INFO)
 
 class GetProxy(object):
     base_dir = os.path.dirname(os.path.realpath(__file__))
+    filepath = os.path.join(base_dir, "proxy.py")
 
-    def __init__(self, input_proxies_file=None, output_proxies_file=None):
-        self.pool = gevent.pool.Pool(500)
+    def __init__(self, key, url, db):
+        self.pool = pool.Pool(500)
         self.plugins = []
         self.web_proxies = []
         self.valid_proxies = []
         self.input_proxies = []
-        self.input_proxies_file = input_proxies_file
-        self.output_proxies_file = output_proxies_file
         self.proxies_hash = set()
         self.origin_ip = None
+        # todo: Remove GeoIP2 database to optimize performance
         self.geoip_reader = None
-        self.client = Redis()
-        self.set_key = 'set:proxies'
-
-    def _collect_result(self):
-        for plugin in self.plugins:
-            if not plugin.result:
-                continue
-
-            self.web_proxies.extend(plugin.result)
+        self.set_key = key
+        self.client = redis.Redis.from_url(url, db)
 
     def _validate_proxy(self, proxy, scheme='http'):
         country = proxy.get('country')
@@ -132,7 +121,8 @@ class GetProxy(object):
 
     def _request_force_stop(self, signum, _):
         logger.warning("[-] Cold shut down")
-        self.save_proxies()
+        self.save_proxies_to_file()
+        self.save_proxies_to_redis()
 
         raise SystemExit()
 
@@ -159,11 +149,9 @@ class GetProxy(object):
     def load_input_proxies(self):
         # 2. 加载 input proxies 列表
         logger.info("[*] Load input proxies")
-
-        if self.input_proxies_file and os.path.exists(self.input_proxies_file):
-            with open(self.input_proxies_file) as fd:
-                for line in fd:
-                    self.input_proxies.append(json.loads(line))
+        with open(self.filepath) as fd:
+            for line in fd:
+                self.input_proxies.append(json.loads(line))
 
     def validate_input_proxies(self):
         # 3. 验证 input proxies 列表
@@ -177,7 +165,7 @@ class GetProxy(object):
         # 4. 加载 plugin
         logger.info("[*] Load plugins")
         for plugin_name in os.listdir(os.path.join(self.base_dir, 'plugin')):
-            if os.path.splitext(plugin_name)[1] != '.py' or plugin_name == '__init__.py':
+            if not plugin_name.endswith('.py') or plugin_name == '__init__.py':
                 continue
 
             try:
@@ -187,7 +175,7 @@ class GetProxy(object):
                 continue
 
             inst = cls()
-            inst.proxies = copy.deepcopy(self.valid_proxies)
+            inst.proxies = self.valid_proxies.copy()
             self.plugins.append(inst)
 
     def grab_web_proxies(self):
@@ -200,7 +188,11 @@ class GetProxy(object):
         self.pool.join(timeout=8 * 60)
         self.pool.kill()
 
-        self._collect_result()
+        for plugin in self.plugins:
+            if not plugin.result:
+                continue
+
+            self.web_proxies.extend(plugin.result)
 
     def validate_web_proxies(self):
         # 6. 验证 web proxies 列表
@@ -217,24 +209,15 @@ class GetProxy(object):
         logger.info("[*] Check %s proxies, Got %s valid proxies" %
                     (len(self.proxies_hash), len(self.valid_proxies)))
 
-    def save_proxies(self):
+    def save_proxies_to_file(self):
         # 7. 保存当前所有已验证的 proxies 列表
         if not self.valid_proxies:
             return
 
         logger.info("[*] Save valid proxies to file")
-        if self.output_proxies_file:
-            outfile = open(self.output_proxies_file, 'w')
-        else:
-            outfile = sys.stdout
-
-        for item in self.valid_proxies:
-            outfile.write("%s\n" % json.dumps(item))
-
-        outfile.flush()
-
-        if outfile != sys.stdout:
-            outfile.close()
+        with open(self.filepath, 'w') as fd:
+            for item in self.valid_proxies:
+                fd.write("%s\n" % json.dumps(item))
 
     def save_proxies_to_redis(self):
         if not self.valid_proxies:
@@ -252,10 +235,10 @@ class GetProxy(object):
         self.load_plugins()
         self.grab_web_proxies()
         self.validate_web_proxies()
-        self.save_proxies()
+        self.save_proxies_to_file()
         self.save_proxies_to_redis()
 
 
 if __name__ == '__main__':
-    g = GetProxy()
+    g = GetProxy("set:proxies", "redis://127.0.0.1:6379", 0)
     g.start()

@@ -15,14 +15,15 @@ class Proxy(object):
     def __init__(self):
         self.txt_list = [
             'http://pubproxy.com/api/proxy?limit=5&format=txt&type=http',
-            # 'http://api.xicidaili.com/free2016.txt',
-            'http://static.fatezero.org/tmp/proxy.txt',
-            # 'http://comp0.ru/downloads/proxylist.txt',
-            'http://www.proxylists.net/http_highanon.txt',
-            'http://www.proxylists.net/http.txt',
-            'http://ab57.ru/downloads/proxylist.txt',
-            # 'https://www.rmccurdy.com/scripts/proxy/good.txt'
             'http://pubproxy.com/api/proxy?limit=5&format=txt&type=https',
+            'http://ab57.ru/downloads/proxylist.txt',
+            # 'http://www.proxylists.net/http_highanon.txt',
+            # 'http://www.proxylists.net/https_highanon.txt',
+            # 'http://www.proxylists.net/http.txt',
+            # 'http://api.xicidaili.com/free2016.txt',
+            # 'http://static.fatezero.org/tmp/proxy.txt',
+            # 'http://comp0.ru/downloads/proxylist.txt',
+            # 'https://www.rmccurdy.com/scripts/proxy/good.txt'
         ]
         self.user_agent = UserAgent()
 
@@ -36,8 +37,8 @@ class Proxy(object):
     @property
     def _get_proxies(self):
         if self.proxies:
-            proxy = self.proxies.pop(0)
-            return {proxy['type']: "%s:%s" % (proxy['host'], proxy['port'])}
+            proxy = self.proxies.pop()
+            return {proxy['type']: proxy["hash"]}
 
     @retrying.retry(stop_max_attempt_number=5)
     def parse_url(self, url):

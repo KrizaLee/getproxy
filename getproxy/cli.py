@@ -5,10 +5,14 @@ from getproxy import GetProxy
 
 
 @click.command()
-@click.option('--in-proxy', help='Input proxy file')
-@click.option('--out-proxy', help='Output proxy file')
-def main(in_proxy, out_proxy):
-    g = GetProxy(in_proxy, out_proxy)
+@click.option('--key', default="set:proxies", type=str,
+              help='Specify the key name in redis that stores the verified proxies.')
+@click.option('--url', default="redis://127.0.0.1:6379", type=str,
+              help='Specify the full Redis URL for connecting.')
+@click.option('--db', default=0, type=int,
+              help='Specify the db in redis that stores the verified proxies.')
+def main(key, url, db):
+    g = GetProxy(key, url, db)
     g.start()
 
 

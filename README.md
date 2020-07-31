@@ -12,7 +12,8 @@ getproxy 是一个抓取发放代理网站，获取 http/https 代理的程序�
 ## 1. 安装
 
 ```
-pip install -U getproxy
+python setup.py build
+python setup.py install
 ```
 
 ## 2. 使用
@@ -23,15 +24,18 @@ pip install -U getproxy
 Usage: getproxy [OPTIONS]
 
 Options:
-  --in-proxy TEXT   Input proxy file
-  --out-proxy TEXT  Output proxy file
-  --help            Show this message and exit.
+  --key TEXT    Specify the key name in redis that stores the verified
+                proxies.
+  --url TEXT    Specify the full Redis URL for connecting.
+  --db INTEGER  Specify the db in redis that stores the verified proxies.
+  --help        Show this message and exit.
 ```
 
-* `--in-proxy` 可选参数，待验证的 proxies 列表文件
-* `--out-proxy` 可选参数，输出已验证的 proxies 列表文件，如果为空，则直接输出到终端
+* `--key` 可选参数，默认：`set:proxies`，指定存储已验证代理在redis中的键名。
+* `--url` 可选参数，默认：`redis://127.0.0.1:6379`，指定用于连接的完整Redis URL。
+* `--db` 可选参数，默认：`0`，指定存储已验证代理在redis中的db。
 
-`--in-proxy` 文件格式和 `--out-proxy` 文件格式一致
+已验证代理存储在包目录下的proxy.py文件中
 
 ### 使用例子
 
